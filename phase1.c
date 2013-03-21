@@ -5,15 +5,18 @@
  */
 #include <stdio.h>
 #include <ctype.h>
+#include <string.h>
 #include "config.h"
 #include "globalHelper.h"
 #include "instructionHandler.h"
 
-void HandleLine(char *line);
+void HandleLine(char* line);
 
 /* --- Global variables for Phase 1 --- */
 extern int pstatus;								// Phase status (is successful)
 extern int lineNumber;							// The line number we're in
+extern int lineStat;							// Line status (does not contain errors)
+extern char* lineTxt;							// The original text of the current line
 
 // Main function for Phase 1 execution.
 // It reads a file, and for every line makes sure it shouldn't be
@@ -21,8 +24,13 @@ extern int lineNumber;							// The line number we're in
 int RunPhase1(FILE* file)
 {
 	RestartMem();
-	for (char line[MAX_LINE+1] ; (fgets(line,sizeof(line),file) != NULL); lineNumber++)
+	lineTxt = calloc(MAX_LINE, 1* sizeof(char));
+	for (char line[MAX_LINE + 1] ; (fgets(line,sizeof(line),file) != NULL); lineNumber++)
+	{
+		strcpy(lineTxt, line);
 		HandleLine(line);
+	}
+	free(lineTxt);
 	return pstatus;
 }
 
@@ -32,15 +40,14 @@ int RunPhase1(FILE* file)
 // * Line 7 = Algorithm lines 5-7.
 // * Line 8 = Algorithm lines 8-10.
 // * Line 9 = Algorithm lines 11-13.
-void HandleLine(char *line)
+void HandleLine(char* line)
 {
-	int i = 0;											// Line position index
-	while (isspace(line[i])) i++;						// Ignore white spaces
-	if (line[i]!='\n' && line[i]!=';')					// Process line only if not empty or comment
-		return;
+	lineStat = 1;
+	int i = FirstNonWhitespace(line, 0);					// Line position index
+	if ((i == -1) || line[i]==';') return; 					// Process line only if not empty or comment
 
-	int sIndex = IsSymbol(line);						// Is this a symbol? Return length of its name.
-	if(!IsStringOrData(line,sIndex))					// Is this an instruction to save data? (.data / .string)
-		if(!IsEntryOrExtern(line,sIndex))				// Is this an .entry or an .extern?
-			IsOpInstruction(line,sIndex);				// Is this an operation instruction? ("mov" etc)
+	int sIndex = IsSymbol(line);							// Is this a leading symbol? Return length of its name.
+	if(!IsStringOrData(line,sIndex))						// Is this an instruction to save data? (.data / .string)
+		if(lineStat && !IsEntryOrExtern(line,sIndex))		// Is this an .entry or an .extern?
+			if (lineStat) IsOpInstruction(line,sIndex);		// Is this an operation instruction? ("mov" etc)
 }

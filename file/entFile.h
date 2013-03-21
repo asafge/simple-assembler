@@ -1,10 +1,6 @@
 /*
- * entFile.h
- *
- *  Created on: Mar 4, 2013
- *      Author: asafg
+ * The entFile files (.h,c) are responsible for creating the .ent file.
  */
-
 #ifndef ENTFILE_H
 	#define ENTFILE_H
 
@@ -13,6 +9,6 @@
 
 	int WriteEntryFile (char fileName[MAX_FILE_NAME]);
 	Symbol* GetNextEntrySymbol (int lastAddress);
-	void AddEntrySymbol (Symbol *sym);
+	void AddEntrySymbol (Symbol* sym);
 
 #endif

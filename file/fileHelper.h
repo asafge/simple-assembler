@@ -14,13 +14,15 @@
 	void WriteInBase4 (FILE* file, int num, int wantedLength);
 
 	/* --- Declaration of data types --- */
-	typedef struct									// 16 bit instruction
+	typedef struct									// 20 bit instruction (17 + 3 padding 0-s)
 	{
+		unsigned short comb:2;
 		unsigned short destRegister:3;
-		unsigned short destOperandType:3;
+		unsigned short destOperandType:2;
 		unsigned short sourceRegister:3;
-		unsigned short sourceOperandType:3;
+		unsigned short sourceOperandType:2;
 		unsigned short instructionCode:4;
+		unsigned short type:1;
 	} instructionWord;
 	typedef struct									// External symbol
 	{

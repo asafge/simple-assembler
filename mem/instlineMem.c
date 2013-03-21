@@ -18,41 +18,31 @@ void RestartInstlines()
 
 // Stores instructions in the instlineArray according to its structure.
 // Uses CreateAddLine for the actual storing and updating of LIC.
-// TODO: -1 needed?
-int StoreInstline(inst* ins, char* argument[], int addressingType[], int registerNum[])
+int StoreInstline(inst* ins, operand* ops[MAX_ARGUMENTS], int comb, int type)
 {
-	switch (ins->numOfOp)
-	{
-	case 0:
-		CreateAddLine(ins, "", 0, -1, "" , 0, -1);
-		break;
-	case 1:
-		CreateAddLine(ins, "" , 0, -1, argument[0], addressingType[0], registerNum[0]);		// Only Dest
-		break;
-	case 2:
-		CreateAddLine(ins, argument[0], addressingType[0], registerNum[0], argument[1], addressingType[1], registerNum[1]);
-		break;
-	default:
-		return 0;
-		break;
-	}
-	return 1;
-}
-
-// This function creates and stores a line of an instruction.
-int CreateAddLine(inst* ins, char op1Name[MAX_LINE], int op1AddType, int reg1, char op2Name[MAX_LINE], int op2AddType, int reg2)
-{
+	int added = 1;
 	instlineArray[LIC].ins = ins;
 
-    strcpy(instlineArray[LIC].op1.name, op1Name);
-    instlineArray[LIC].op1.addrType = op1AddType;
-    instlineArray[LIC].op1.reg = ((reg1 == -1) ? 0 : reg1);
+	if ((ins->numOfOp == 2) && (ops != NULL) && (ops[0] != NULL))
+	{
+		strcpy(instlineArray[LIC].op1.name, ops[0]->name);
+		instlineArray[LIC].op1.addrType = ops[0]->addrType;
+		instlineArray[LIC].op1.reg = ops[0]->reg;
+		added += GetInstAdditionalLength(ops[0]->addrType);
+	}
 
-    strcpy(instlineArray[LIC].op2.name, op2Name);
-    instlineArray[LIC].op2.addrType = op2AddType;
-    instlineArray[LIC].op2.reg = ((reg2 == -1) ? 0 : reg2);
+	if ((ops != NULL) && (ops[1] != NULL))
+	{
+		strcpy(instlineArray[LIC].op2.name, ops[1]->name);
+		instlineArray[LIC].op2.addrType = ops[1]->addrType;
+		instlineArray[LIC].op2.reg = ops[1]->reg;
+		added += GetInstAdditionalLength(ops[1]->addrType);
+	}
 
-	IC = IC + GetInstAdditionalLength(op1AddType) + GetInstAdditionalLength(op2AddType);
+	instlineArray[LIC].comb = (comb != -1) ? comb: 0;
+	instlineArray[LIC].type = (type != -1) ? type: 0;
+
+	if (strcmp(ins->name,"entry") != 0) IC += added;			// Don't increment on entry
     LIC++;
     return 1;
 }
@@ -68,8 +58,3 @@ int GetInstAdditionalLength(int addressType)
 		return 0;
 	return 0;
 }
-
-/*
- *   - dataArray (DATA/STRING handling)
- *   - refArray (ENTRY/EXTERN handling)
- *   */

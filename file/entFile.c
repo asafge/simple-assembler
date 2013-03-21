@@ -1,10 +1,6 @@
 /*
- * entFile.c
- *
- *  Created on: Mar 4, 2013
- *      Author: asafg
+ * The entFile files (.h,c) are responsible for creating the .ent file.
  */
-
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -16,108 +12,82 @@
 extern int LIC;
 extern int IC;
 
-/* This is used to collect entry symbols during phase 2. */
+// Variables for collecting entry symbols in phase 2
 int entryCounter = 0;
 Symbol* entryArr[MAX_ARRAY_LENGTH];
 
-
-/* Writes the Entry file. */
+// This function writes the .ent file.
 int WriteEntryFile (char fileName[MAX_FILE_NAME])
 {
-	int i;
 	Symbol *lastSymbol = NULL;
 	FILE* entFile;
 
-	/* Mark relevant symbols as entries. */
-	/* This action is done by iterating all .entry instructions alone. */
-	for (i = 0; i < LIC; i++)
+	for (int i = 0; i < LIC; i++)							// Mark relevant symbols as entries
 	{
-		Symbol *sym;
-
-		instLine fins = instlineArray[i];
-		if (strcmp(fins.ins->name, ".entry") != 0)
+		instLine ins = instlineArray[i];
+		if (strcmp(ins.ins->name, "entry") != 0)			// Skip all other instructions
 			continue;
-
-		sym = GetSymbol(fins.op1.name);
-
+		Symbol* sym = GetSymbol(ins.op2.name, -1);
 		if (sym == NULL)
 		{
-			fprintf(stderr, "Could not find symbol for entry: %s\n", fins.op1.name);
+			fprintf(stderr, "Could not find symbol for entry: %s\n", ins.op1.name);
 			return 0;
 		}
-
-		/* Collecting this symbol. */
 		AddEntrySymbol(sym);
 	}
 
-	/* If no entries were found, return in success right now. */
-	if (!entryCounter)
-		return 1;
+	if (!entryCounter) return 1;							// Nothing to write - success
 
-	/* Create the .ent file. */
-	entFile = CreateTypedFile(fileName, ".ent");
-
+	entFile = CreateTypedFile(fileName, ".ent");			// Create the file
 	if (entFile == NULL)
 	{
 		fprintf(stderr, "Could not create the Entries file for \"%s.as\"\n", fileName);
 		return 0;
 	}
-
-	/* Get the first entry symbol. */
 	lastSymbol = GetNextEntrySymbol(-1);
 
-	/* Write all entry symbols in ascending order (by address). */
-	do
+	do														// Write all entry symbols ASC
 	{
 		int addr = lastSymbol->address;
-		if (lastSymbol->type == DATA) /* If it's a DATA symbol, add the IC to it. */
-			addr += IC;
+		if (lastSymbol->type == DATA) addr += IC;			// If it's a DATA symbol add IC
 
-		fprintf(entFile, "%s\t", lastSymbol->name);
-		WriteInBase4(entFile, addr, 0);
+		fprintf(entFile, "%s\t", lastSymbol->name);			// Write label and address to file
+		WriteInBase4(entFile, addr, 4);
 		fputc('\n', entFile);
 
-		/* Get the next symbol. */
-		lastSymbol = GetNextEntrySymbol(addr);
+		lastSymbol = GetNextEntrySymbol(addr);				// Next symbol
 	} while (lastSymbol != NULL);
 
 	fclose(entFile);
 	return 1;
 }
 
-/* This function returns the next entry symbol out of the entryArr. */
-/* The symbol returned is in address which is bigger than the lastAddress given. */
+// This function returns the next entry symbol out of the entryArr.
+// The symbol returned is in address which is bigger than the lastAddress given.
 Symbol* GetNextEntrySymbol (int lastAddress)
 {
 	int minAddr = INT_MAX;
 	Symbol *minSymbol = NULL;
-	int i;
 
-	/* Finding the minimum addressed symbol whose address is bigger than lastAddress which was given to the function. */
-	for (i = 0; i < entryCounter; i++)
+	// Finding the minimum addressed symbol whose address is bigger than lastAddress
+	for (int i = 0; i < entryCounter; i++)
 	{
-		Symbol *sym = entryArr[i];
+		Symbol* sym = entryArr[i];
 		int addr = sym->address;
-
-		if (sym->type == DATA)
-			addr += IC;
-
+		if (sym->type == DATA) addr += IC;
 		if (addr < minAddr && addr > lastAddress)
 		{
 			minAddr = addr;
 			minSymbol = sym;
 		}
 	}
-
 	return minSymbol;
 }
 
-/* Collects an entry symbol into the entryArr. */
-void AddEntrySymbol (Symbol *sym)
+// This function adds an entry symbol into the entryArr.
+void AddEntrySymbol (Symbol* sym)
 {
-	/* Checking if this symbol was already marked and added. */
-	if (sym->isEntry)
-		return;
+	if (sym->isEntry) return;								// Ignore previously added symbols
 
 	sym->isEntry = 1;
 	entryArr[entryCounter++] = sym;

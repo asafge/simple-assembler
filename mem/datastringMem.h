@@ -12,7 +12,8 @@
 
 	/* --- Declaration of functions --- */
 	void RestartDatastrings();
-	void StoreData(char* data);
+	void StoreNumber(int data);
+	void StoreString(char* data);
 
 	/* --- Global data/string variables --- */
 	int DC;											// Data Counter

@@ -6,18 +6,23 @@
 	#define INSTRUCTIONPARSE
 
 	#include "instructionHandler.h"
+	#include "mem/instlineMem.h"
 
 	/* --- Declaration of functions --- */
 	int HandleDataInstruction (char* data);
 	int HandleStringInstruction(char* string);
 	int HandleExternInstruction(char* label);
 	int HandleEntryInstruction(char* data);
+	int HandleOpInstruction(char* line, inst* ins);
 
-	inst* GetInstByName(char* name);
-	reg* GetRegisterByName(char* name);
+	operand* GetOperand(char* line, inst* ins, int isSrc);
+	int GetOpComb(char* data);
+	int GetOpType(char* data);
+	int GetOpRegister(char* operand, int addrType);
+	char* GetOpIndex(char* data);
 
 	int GetAddressingType(char* operand);
-	int IsAllowedAddressing(inst* ins , int operandType , int addressingType);
+	int IsAllowedAddressing(inst* ins , int opType , int srcOrDest);
 
 #endif
 

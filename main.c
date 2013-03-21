@@ -18,19 +18,22 @@
 
 void HandleFile (char* filePath);
 int RunPhase1(FILE* file);
+void RunPhase2 (char fileName[MAX_FILE_NAME]);
 
 extern int pstatus;
 
 // Main entry function
 int main(int argc, char *argv[])
 {
+	setbuf(stdout, NULL);
+
 	if (argc < 2)
 		puts("Nothing to compile. Use: \"assembler <file1> <file2>\" instead.");
 	else
 	{
 		RestartMem();
 		// Ignore first argument (program name) and handle files.
-		puts("Starting to read files...");
+		puts("| Starting to read files...");
 		for (int i=1; i<argc; i++)
 			HandleFile(argv[i]);
 	}
@@ -57,14 +60,14 @@ void HandleFile(char* name)
 		RunPhase1(file);
 		fclose(file);
 
-		if(pstatus)
+		if(!pstatus)
+			printf(">> Found errors in %s, object file would not be created.\n",fileName);
+		else
 		{
 			printf(">> Running phase 2...\n");
-			//RunPhase2(fileName);
-			printf("----- Done -----\n");
+			RunPhase2(name);
 		}
-		else
-			printf(">> Found errors in %s, object file would not be created.\n",fileName);
+		puts("| Done.");
 
 		RestartMem();
 	}

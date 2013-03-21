@@ -4,7 +4,7 @@
  */
 #include <string.h>
 #include <stdio.h>
-#include <ctype.h>
+#include <stdlib.h>
 #include "config.h"
 #include "globalHelper.h"
 #include "instructionHandler.h"
@@ -13,197 +13,282 @@
 #include "mem/instlineMem.h"
 #include "mem/datastringMem.h"
 
-extern int lineNumber;
-extern inst opInstructionsArray[Max_Instruction + 1];
-extern reg registersArray[MAX_REGISTER];
-
 // This function handles the VirtualInstruction .DATA [#],[#],...
-// First call assuming no spaces.
-// FIXME: Probably buggy.
 int HandleDataInstruction(char* data)
 {
-	char* num = strtok(data,",");
+	char* num = strtok(data, ",");
 	if (!num)
+		return PrintSaveError("", "no data provided");
+
+	while (num != NULL)							// Read all numbers
 	{
-		printf("Error in line %d | DATA %s ,no data provided.\n", lineNumber, data);
-		return 0;
-	}
-	else
-	{
-		while (num != NULL)							// Read all numbers
+		int i = FirstNonWhitespace(num, 0);
+		if (!IsNumber(&num[i]))
+			return PrintSaveError(&num[i], "not numeric");
+		else
 		{
-			int i=0;
-			for (int i=0; isspace(num[i]);i++) ;			// Ignore white spaces
-			if (!IsNumber(&num[i]))
-			{
-				printf("Error in line %d | DATA %s, is not a numeric.\n", lineNumber, data);
-				return 0;
-			}
-			else
-			{
-				StoreData(atoi(&num[i]));
-				num = strtok (NULL, ",");			// Get the next number from the list
-			}
+			StoreNumber(atoi(&num[i]));
+			num = strtok (NULL, ",");			// Get the next number from the list
 		}
 	}
 	return 1;
 }
 
 // This function handles the VirtualInstruction .STRING "..."
-// FIXME: Probably buggy.
 int HandleStringInstruction(char* data)
 {
 	int len = strlen(data);
 	if (!len)
+		return PrintSaveError(data, "no data provided");
+
+	int i = FirstNonWhitespace(data, 0);		// Ignore white spaces
+
+	if (data[i] != '"')							// Make sure it's the beginning of a string
+		return PrintSaveError(data, "first char is not \"");
+
+	i++;										// Skip " char
+	char* innerStr = GetWord(&data[i],'\"');
+	if (!innerStr || (strlen(innerStr) == 0))	// Make sure the string ends and has length
+		return PrintSaveError(data, "not a valid string");
+
+	StoreString(innerStr);
+	free(innerStr);
+	return 1;
+}
+
+// This function handles the instruction .EXTERN
+// It just saves the label in the symbols memory.
+int HandleExternInstruction(char* label)
+{
+	return SaveLeadingLabel(label, (short)CODE, (short)1, (short)0, (short)0);
+}
+
+// This function handles the instruction .ENTRY
+// It saves the label as an "instruction" for phase 2
+int HandleEntryInstruction(char* label)
+{
+	char* slabel = GetWord(label,'\0');
+
+	operand* ops[MAX_ARGUMENTS];
+	for (int k=0; k<MAX_ARGUMENTS; k++)
+		ops[k] = calloc(1, sizeof(operand));
+
+	strcpy(ops[0]->name, "");
+	ops[0]->addrType = LABEL;
+	ops[0]->reg = 0;
+
+	strcpy(ops[1]->name, slabel);
+	ops[1]->addrType = LABEL;
+	ops[1]->reg = 0;
+
+	int flag = StoreInstline(GetInstByName("entry"), &ops, -1, -1);
+	if (!flag)
 	{
-		printf("Error in line %d | No data provided.\n", lineNumber);
-		return 0;
+		free(slabel);
+		for (int k=0; k<MAX_ARGUMENTS; k++)
+			free(ops[k]);
+	}
+	return flag;
+}
+
+// This function handles opcode instructions
+int HandleOpInstruction(char* line, inst* ins)
+{
+	// Save line
+	char* temp = calloc(MAX_LINE, sizeof(char));
+	strcpy(temp, line);
+
+	int type = GetOpType(temp);									// Get type
+	if (type == -1) { free(temp); return 0; }
+	line = &line[2];
+
+	int comb = 0;
+	if (type == 1)
+	{
+		strcpy(temp, line);
+		comb = GetOpComb(temp);									// Get comb
+		if (comb == -1)  { free(temp); return 0; }
+		line = &line[4];
+	}
+	free(temp);
+
+	if (ins->numOfOp == 0)										// Process commands based on groups
+	{
+		if ((comb != 0) || (FirstNonWhitespace(line, 0) != -1))
+			return PrintSaveError(ins->name, "too many arguments");
+		StoreInstline(ins, NULL, comb, type);
 	}
 	else
 	{
-		int i,j = 0;
-		int strLength = 0;
+		operand* ops[MAX_ARGUMENTS];
+		line = &line[FirstNonWhitespace(line,0)];
 
-		for (; isspace(data[i]); i++) ;			// Ignore white spaces
-		if (data[i] != '"')						// Make sure it's the beginning of a string
-		{
-			printf("Error in line %d | First char is not \".\n", lineNumber);
-			return 0;
-		}
-		else
-		{
-			i++;
-			for (j=i; (j<len && data[j] != '"'); j++)
-					strLength++;
-
-			if (!strLength)
-			{
-				printf("Error in line %d | STRING %s not a valid string.\n", lineNumber, data);
+		for (int j=0; j<MAX_ARGUMENTS; j++)
+			if (!(ops[j] = GetOperand(line, ins, j)))
 				return 0;
-			}
-			else
-			{
-				/* TODO: Test this */
-				char temp[j-i];
-				memcpy(temp, &data[i], j-i);
-				temp[j] = '\0';
-				StoreData((int)temp);
-			}
-		}
+
+		StoreInstline(ins, &ops, comb, type);
 	}
 	return 1;
 }
 
-// This function handles the instruction .EXTERN ...
-int HandleExternInstruction(char* label)
+// This function gets a pointer to an operand struct from a given line.
+operand* GetOperand(char* line, inst* ins, int srcOrDest)
 {
-	return SetLabelAsSymbol(label, lineNumber, strlen(label) ,(short)CODE, (short)1, (short)0, (short)0);
+	if ((ins->numOfOp == 1) && (srcOrDest == 0))
+		return (operand*)calloc(1, sizeof(operand));		// Just an empty operand
+
+	static int i = 0;
+	char* word = GetWord(&line[i], ',');
+	if (strcmp(word,"") == 0)
+	{
+		PrintSaveError(ins->name, "too few arguments");
+		return NULL;
+	}
+	else
+	{
+		operand* op = calloc(1, sizeof(operand));
+		strcpy(op->name, word);
+		i += strlen(word) + 1;
+		free(word);
+
+		op->addrType = GetAddressingType(op->name);
+		if (op->addrType == DIRECT_REG || op->addrType == INDEX_REGISTER)
+			op->reg = GetOpRegister(op->name, op->addrType);
+
+		if ((op->addrType == -1) || !IsAllowedAddressing(ins, srcOrDest, op->addrType))
+		{
+			free(op);
+			PrintSaveError(ins->name, "unsupported addressing type");
+			return NULL;
+		}
+		else
+		{
+			if (srcOrDest == DEST) i = 0;
+			return op;
+		}
+	}
 }
 
-// This function handles the instruction .ENTRY ...
-// FIXME: save this as an instruction line
-int HandleEntryInstruction(char* label)
+// This function gets the type bit of the command
+// starting at the address of data
+int GetOpType(char* data)
 {
-	//return SetLabelAsSymbol(label, lineNumber, strlen(label) ,(short)CODE, (short)0, (short)1, (short)0);
+	int type;
+	char* word = GetWord(data, '\n');
+	if ((strcmp(word,"") == 0))
+	{
+		PrintSaveError("", "no type provided");
+		return -1;
+	}
+	else
+	{
+		free(word);
+		type = atoi(strtok(&data[1], "/"));
+		if ((type != 0) && (type != 1))
+		{
+			PrintSaveError("", "unknown type provided");
+			return -1;
+		}
+		else
+			return type;
+	}
+}
+
+// This function gets the type comb bits of the command
+// starting at the address of data
+int GetOpComb(char* data)
+{
+	int comb[2];
+	char* word = GetWord(data, '\n');
+	if ((strcmp(word,"") == 0))
+	{
+		PrintSaveError("", "no comb provided");
+		return -1;
+	}
+	else
+	{
+		comb[0] = atoi(strtok(word,"/"));
+		comb[1] = atoi(strtok(NULL,"/"));
+		free(word);
+		if ((comb[0] != 0 && comb[0] != 1) || (comb[1] != 0 && comb[1] != 1))
+		{
+			PrintSaveError("", "unknown comb provided");
+			return -1;
+		}
+		else
+		{
+			if ((comb[0] == 0) && (comb[1] == 0)) return 0;
+			else if ((comb[0] == 0) && (comb[1] == 1)) return 1;
+			else if ((comb[0] == 1) && (comb[1] == 0)) return 2;
+			else return 3;
+		}
+	}
+}
+
+// This function extracts the register code from a given operand.
+int GetOpRegister(char* operand, int addrType)
+{
+	if (addrType == DIRECT_REG)
+		return GetRegisterByName(operand)->code;
+	else if (addrType == INDEX_REGISTER)
+		return GetRegisterByName(GetOpIndex(operand))->code;
 	return -1;
-}
-
-// This function looks up an instruction name in the instruction definition array.
-// If NULL is returned there's no instruction with that name found.
-inst* GetInstByName(char* name)
-{
-	int i;
-	for (i=0; i<Max_Instruction; i++)
-		if (strcmp(name,opInstructionsArray[i].name) == 0)
-			return &opInstructionsArray[i];
-	return NULL;
-}
-
-// This function looks up a register name in the registers array.
-// If NULL is returned there's no register with that name found.
-reg* GetRegisterByName(char* name)
-{
-	int i;
-	for (i=0; i<MAX_REGISTER; i++)
-		if (strcmp(name, registersArray[i].name) == 0)
-			return &registersArray[i];
-	return NULL;
 }
 
 // This function gets the type of addressing used on this operand.
 int GetAddressingType(char* operand)
 {
-	if (GetRegisterByName(operand))
-			return DIRECT_REG;
-	else if (IsAllowedLabelName(operand))
-		return LABEL;
-	if (operand[0] == '#' && IsNumber(&operand[1]))
+	if ((strcmp(operand, "") == 0))
+		return -1;
+	else if (GetRegisterByName(operand))
+		return DIRECT_REG;
+	else if (operand[0] == '#' && IsNumber(&operand[1]))
 		return IMMEDIATE;
 	else
 	{
 		char* label = GetWord(operand,'{');
 		if (label && IsAllowedLabelName(label))
 		{
-			char* a = strchr(operand,'{');
-			char* b = strchr(operand,'}');
-
-			if ((a && b) && (a < b))
+			char* index = GetOpIndex(operand);
+			if (index)
 			{
-				char index[MAX_LINE];
-				strncpy(index, a, b-a);
-				index[b-a] = '\0';					// TODO: Test
-
 				if (IsNumber(index))
 					return INDEX_DIRECT;
 				if (GetRegisterByName(index))
 					return INDEX_REGISTER;
 				if (IsAllowedLabelName(index))
 					return INDEX_LABLE;
+				return -1;
 			}
+			else
+				return LABEL;
 		}
 	}
 	return -1;
 }
 
-// FIXME: implement
-char* GetIndex(char* operand)
+// This function extracts the index of a given index typed operand.
+char* GetOpIndex(char* data)
 {
-/*
-int WhichRegister (char *_register,int model)
-{
-	int i;
-	char *registryName;
+	char* a = strchr(data,'{') + sizeof(char);
+	char* b = strchr(data,'}');
 
-	if(model==REGISTER)
+	if ((a && b) && (a < b))
 	{
-		for (i=0;i<MAX_REGISTER;i++)
-			if(strcmp(_register,strRegister[i].name)==0)
-			{
-				return i;
-			}
+		int size = (b-a) * sizeof(char);
+		char* index = (char*)calloc(size, sizeof(char));
+		strncpy(index, a, size);
+		index[size] = '\0';
+		return index;
 	}
-
-	else if (model==LABEL_PLUS_REGISTER)
-	{
-		for(i=0;i<MAX_LINE;i++)
-			if(_register[i]=='[')
-				break;
-		registryName=GetWord(&_register[i+1],']');
-
-		for (i=0;i<MAX_REGISTER;i++)
-			if(strcmp(registryName,strRegister[i].name)==0)
-			{
-				return i;
-			}
-	}
-		return -1;
-}
- */
 	return NULL;
 }
 
-// Check if this instruction addressing is legal
-int IsAllowedAddressing(inst* ins , int operandType , int addressingType)
+// This function returns true if the addressing type is allowed
+// for this instruction, false otherwise.
+int IsAllowedAddressing(inst* ins , int opType , int addrType)
 {
-	return (operandType == SOURCE) ? (ins->sourceAllowedAddr[addressingType]) : (ins->destAllowedAddr[addressingType]);
+	int t = (opType == SOURCE) ? (ins->sourceAllowedAddr[addrType]) : (ins->destAllowedAddr[addrType]);
+	return t;
 }

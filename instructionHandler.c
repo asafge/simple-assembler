@@ -1,9 +1,7 @@
 /*
  * The instructionHandler files (.h,c) are responsible for declaring and defining data types and
- * static data objects for the use of the instructionCheck and instructionParse files.
- * Also, they handle each instruction check.
+ * static data objects for the use of the instructionParse files. Also, they handle instruction check.
  */
-
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -15,8 +13,6 @@
 #include "mem/symbolMem.h"
 #include "mem/instlineMem.h"
 
-extern int pstatus;
-extern int lineNumber;
 extern int DC;
 extern int IC;
 
@@ -36,145 +32,102 @@ inst opInstructionsArray[Max_Instruction + 1] =
 
 			{"rts",14,{0,0,0,0,0,0},{0,0,0,0,0,0},0}, {"stop",15,{0,0,0,0,0,0},{0,0,0,0,0,0},0},	// Group3
 
-			{".entry",16,{0,0,0,0,0,0},{0,1,1,1,1,1},0} };											// .entry
+			{"entry",16,{0,0,0,0,0,0},{0,1,0,0,0,0},1} };											// .entry
 
 // An array of registers. Each register is in he form of {name,code} - see above
 reg registersArray[MAX_REGISTER] = {{"r0",0},{"r1",1},{"r2",2},{"r3",3},{"r4",4},{"r5",5},{"r6",6},{"r7",7}};
 
+// This function looks up an instruction name in the instruction definition array.
+// If NULL is returned there's no instruction with that name found.
+inst* GetInstByName(char* name)
+{
+	for (int i=0; i<Max_Instruction; i++)
+		if (strcmp(name,opInstructionsArray[i].name) == 0)
+			return &opInstructionsArray[i];
+	return NULL;
+}
+
+// This function looks up a register name in the registers array.
+// If NULL is returned there's no register with that name found.
+reg* GetRegisterByName(char* name)
+{
+	for (int i=0; i<MAX_REGISTER; i++)
+		if (strcmp(name, registersArray[i].name) == 0)
+			return &registersArray[i];
+	return NULL;
+}
 
 // Check if this instruction has a symbol (might not be a valid one).
 // If so it will return the length of its name, otherwise 0.
 int IsSymbol(char *line)
 {
-	int i=0;
-	while (isspace(line[i])) i++;							// Ignore white spaces
+	int i = FirstNonWhitespace(line, 0);
+	if(line[i] == '.') return 0;						// Not a label if it starts with "."
 
-	if(line[i] == '.')										// Not a label if it starts with "."
-		return 0;
-	else
-		for (i=0; i<MAX_LABEL; i++)
-			if(line[i] == ':')
-				return i;									// Found a label (found ":")
-	return 0 ;												// Did not find a label, this instruction is something else
+	for (i=0; i<MAX_LABEL; i++)
+		if(line[i] == ':')
+			return i;									// Found a label (found ":")
+	return 0 ;											// Did not find a label, this instruction is something else
 }
 
-// Check if this is a virtual instruction in the form of .string/.data
+// Check if this is a virtual instruction in the form of .string/.data.
+// If so it will save the symbol (if any), and the string/integer given.
 int IsStringOrData(char* line, int symbolIndex)
 {
-	int i = (symbolIndex) ? (symbolIndex + 1) : 0;			// Starting index depends on symbolIndex
-	while (isspace(line[i])) i++;							// Ignore white spaces
+	int i = (symbolIndex) ? (symbolIndex + 1) : 0;		// Starting index depends on symbolIndex
+	i = FirstNonWhitespace(line, i);					// Ignore whitespaces
 
-	if (line[i] != '.')										// Data/String instructions starts with "."
-		return 0;
-	else
-	{
-		int isD, isS = 0;									// Is STRING or DATA
-		char* word = GetWord(&line[++i],' ');				// Pass address of line[i] to get the word
-		if ((isD = strcasecmp(word, "DATA") != 0) && (isS = strcasecmp(word, "STRING") != 0))
+	char* word = GetWord(&line[i], ' ');				// Pass address of line[i] to get the word
+	if ((strcmp(word, "") == 0)) return 0;
+	int isD = (strcasecmp(word, ".data") == 0);			// Is data?
+	int isS = (strcasecmp(word, ".string") == 0);		// Is string?
+	i += strlen(word);									// skip the data/string strings if found
+	free(word);
+
+	if (!isD && !isS) return 0;							// Not a data or a string
+	if (symbolIndex > 0)								// Add to symbol list
+		if (!SaveLeadingLabel(line, DATA, 0, 0, (short)DC))
 			return 0;
-		else
-		{
-			// Add to symbol list and set phase status. TODO : Refactor into handleData.. / handleString..
-			if (symbolIndex > 0)
-				pstatus = SetLabelAsSymbol(line, lineNumber, (short)symbolIndex, DATA, 0, 0, (short)DC);
 
-			// If added successfully, handle the instruction
-			if (pstatus)
-			{
-				i += strlen(word);							// skip the DATA/STRING strings
-				pstatus = ((isD) ? HandleDataInstruction(&line[i]) : HandleStringInstruction(&line[i]));
-			}
-		}
-	}
-	return pstatus;
+	// Add the string or the integers to the memory
+	return ((isD) ? HandleDataInstruction(&line[i]) : HandleStringInstruction(&line[i]));
 }
 
-// Check if this is an .extern or .entry instruction.
+// Check if this is an .extern or .entry instruction, save if needed.
 int IsEntryOrExtern(char *line, int symbolIndex)
 {
-	int i = (symbolIndex) ? (symbolIndex + 1) : 0;			// Starting index depends on symbolIndex
-	while (isspace(line[i])) i++;							// Ignore white spaces
+	int i = (symbolIndex) ? (symbolIndex + 1) : 0;		// Starting index depends on symbolIndex
+	i = FirstNonWhitespace(line,i);						// Ignore white spaces
 
-	if (line[i] != '.')										// Entry/Extern instructions starts with "."
-		return 0;
-	else
-	{
-		int isEx, isEn = 0;									// Is EXTERN or ENTRY
-		char* word = GetWord(&line[++i], ' ');				// Pass address of line[i] to get the word
-		if ((isEx = strcasecmp(word, "EXTERN") == 0) || (isEn = strcasecmp(word, "ENTRY") == 0))
-		{
-			i += strlen(word);								// Skip the EXTERN/ENTRY strings
-			pstatus = ((isEx) ? HandleExternInstruction(&line[i]) : HandleEntryInstruction(&line[i]));
-		}
-		free(word);
-	}
-	return pstatus;
+	char* word = GetWord(&line[i], ' ');				// Pass address of line[i] to get the word
+	if ((strcmp(word, "") == 0)) return 0;
+	int isEx = (strcasecmp(word, ".extern") == 0);		// Is extern?
+	int isEn = (strcasecmp(word, ".entry") == 0);		// Is entry?
+	i += strlen(word);									// Skip the extern/entry strings if found
+	free(word);
+
+	if (!isEx && !isEn) return 0;						// Not extern or entry
+
+	return ((isEx) ? HandleExternInstruction(&line[i]) : HandleEntryInstruction(&line[i]));
 }
 
 // Check if this is an opcode instruction (like "mov")
-// TODO: This is the only function that save the symbol before checking validity of command
 int IsOpInstruction(char *line , int symbolIndex)
 {
-	if(symbolIndex)											// Try to save symbol if needed
-	{
-		pstatus = SetLabelAsSymbol(line, lineNumber, symbolIndex, CODE, 0, 0, IC);
-		if (!pstatus)
+	if (symbolIndex > 0)
+		if (!SaveLeadingLabel(line, CODE, 0, 0, IC))		// Save symbol
 			return 0;
-	}
 
 	int i = (symbolIndex) ? (symbolIndex + 1) : 0;			// Starting index depends on symbolIndex
-	while (isspace(line[i])) i++;							// Ignore white spaces
+	i = FirstNonWhitespace(line, i);						// Ignore white spaces
 
-	char* cmdName = GetWord(&line[i], ' ');					// Try to get command name
+	char* cmdName = GetWord(&line[i], '/');					// Try to get command name
 	inst* ins = GetInstByName(cmdName);						// Try to get corresponding instruction
-	if(strcasecmp(ins->name, "null") == 0)					// Make sure we got an actual command
-		return PrintErrIsRecoverable(line, lineNumber, cmdName, "an invalid command", 0);
-	else
-	{
-		char* operands[MAX_ARGUMENTS];						// Save operands found in an array
-		int opAddrTypes[MAX_ARGUMENTS];						// Save addressing type for each operand
-		int registers[MAX_ARGUMENTS];						// Save registers found
+	free(cmdName);
 
-		int len = strlen(line);
-		i += strlen(cmdName);								// Increment index to pass cmdName
-		if ((ins->numOfOp) == 0)							// Process commands differently based on their group
-		{
-			while (i<len)
-				if (!isspace(line[i]))
-					return PrintErrIsRecoverable(line, lineNumber, cmdName, "too many arguments", 0);
-		}
-		else
-		{
-			int j = 0;										// Counter for scanning operands
-			int opSrcOrDest = SOURCE;						// SOURCE or DEST
+	if(!ins)
+		return PrintSaveError(cmdName, "an invalid instruction");
 
-			while (j < (ins->numOfOp))
-			{
-				operands[j] = GetWord(&line[i], ',');
-				if (!operands[j])
-					return PrintErrIsRecoverable(line, lineNumber, cmdName, "too few arguments", 0);
-				else
-				{
-					opAddrTypes[j] = GetAddressingType(operands[j]);
-					if (opAddrTypes[j] == -1)
-						return PrintErrIsRecoverable(line, lineNumber, cmdName, "unsupported addressing type", 0);
-
-					if (ins->numOfOp == 1)								// We might just need one argument, treat it as DEST
-						opSrcOrDest++;
-					if (!IsAllowedAddressing(ins, opSrcOrDest, opAddrTypes[j]))
-						return PrintErrIsRecoverable(line, lineNumber, cmdName, "unsupported addressing for this command", 0);
-
-					if (opAddrTypes[j] == INDEX_LABLE || opAddrTypes[j] == INDEX_REGISTER)
-					{
-						// FIXME: Implement
-						//char* label = GetWord(operand, '{');
-						//char* index = GetIndex(operand);				// Could be num,register or label
-					}
-				}
-			}
-		}
-		if (!StoreInstline(ins,&*operands,opAddrTypes,registers))
-			return PrintErrIsRecoverable(line, lineNumber, cmdName, "could not store instruction line", 0);
-	}
-	return 1;
+	i += strlen(ins->name);									// Increment index to pass cmdName
+	return HandleOpInstruction(&line[i], ins);				// Save symbol if exists
 }

@@ -1,7 +1,7 @@
 instructionHandler.d: ../instructionHandler.c ../config.h \
  ../globalHelper.h ../instructionHandler.h ../instructionParse.h \
- ../mem/symbolMem.h ../mem/instlineMem.h ../mem/../config.h \
- ../mem/../instructionHandler.h
+ ../mem/instlineMem.h ../mem/../config.h ../mem/../instructionHandler.h \
+ ../mem/symbolMem.h
 
 ../config.h:
 
@@ -11,10 +11,10 @@ instructionHandler.d: ../instructionHandler.c ../config.h \
 
 ../instructionParse.h:
 
-../mem/symbolMem.h:
-
 ../mem/instlineMem.h:
 
 ../mem/../config.h:
 
 ../mem/../instructionHandler.h:
+
+../mem/symbolMem.h:

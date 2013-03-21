@@ -8,11 +8,13 @@
 	char* strtokEx (char* str, char* seps, int index);
 	int IsNumber(char* string);
 	int FirstNonWhitespace(char* str, int i);
-	int PrintErrIsRecoverable(char* line, int lineNumner, char* object, char* errMsg, int isRecoverable);
+	int PrintSaveError(char* object, char* errMsg);
 	void RestartMem();
 
 	/* --- Global variables for Phase 1 --- */
 	int pstatus;								// Phase status (is successful)
-	int lineNumber;								// The line number we're in.
+	int lineNumber;								// The line number we're in
+	char* lineTxt;								// The original text of the current line
+	int lineStat;								// Line status (does not contain errors)
 
 #endif

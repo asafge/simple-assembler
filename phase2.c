@@ -5,13 +5,13 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include "config.h"
 #include "file/entFile.h"
 #include "file/extFile.h"
 #include "file/objFile.h"
 #include "file/fileHelper.h"
 
-void RunPhase2 (char fileName[MAX_FILE_NAME]);
 void RollbackPhase2(char fileName[MAX_FILE_NAME]);
 
 /* --- Global variables for Phase 2 --- */
@@ -26,17 +26,17 @@ void RunPhase2(char fileName[MAX_FILE_NAME])
 	FILE* objFile = CreateTypedFile(fileName, ".ob");
 	if (objFile == NULL)
 	{
-		fprintf(stderr, "Could not open object file for write.\n");
+		printf(stderr, "Could not open object file for write.\n");
 		return;
 	}
 
 	// Start writing .ob file below
-	int currentIC = 0, i;
+	int currentIC = 0;
 	WriteOpenningLine(objFile);
 
-	for (i = 0; i < LIC; i++)															// Add instruction saved in phase 1
+	for (int i = 0; i < LIC; i++)														// Add instruction saved in phase 1
 	{
-		if (strcasecmp(instlineArray[i].ins->name, ".entry") == 0) continue; 			// Handle later (TODO: ?)
+		if (strcmp(instlineArray[i].ins->name, "entry") == 0) continue; 				// Handle later on
 		
 		int wordsAdded = WriteInstruction(objFile, instlineArray[i], currentIC);		// Write instruction and get # of words
 		if (!wordsAdded)
@@ -58,7 +58,6 @@ void RunPhase2(char fileName[MAX_FILE_NAME])
 	{
 		fclose(objFile);
 		RollbackPhase2(fileName);
-		free(fileName);
 		return;
 	}
 	WriteExternalFile(fileName);														// Write the .ext file (If needed)

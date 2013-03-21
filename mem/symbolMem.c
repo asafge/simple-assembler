@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "../globalHelper.h"
 #include "../config.h"
 #include "../instructionParse.h"
 #include "symbolMem.h"
@@ -13,32 +14,24 @@
 SymbolNode* symbList = NULL;
 SymbolNode* last = NULL;
 
-// This function sets a label in the symbols list.
-// This is where a label becomes a symbol.
-int SetLabelAsSymbol(char *line, int lineNumber, short len, short type, short isExtern, short isEntery, short address)
+// This function saves a leading label in the symbols list.
+// Leading means it's the label of the line, followed by ':',
+// or its the label of an Entry instruction.
+int SaveLeadingLabel(char *line, short type, short isExtern, short isEntery, short address)
 {
-	char* label = (char*) calloc(len+1, sizeof(char));
-	int j = 0;
-
-	for(int i=0; i<len; i++)
-		if(!isspace(line[i]) && (line[i] != ':'))			// Make sure this isn't a space or the end of a label
-			label[j++] = line[i];
-	label[j] = '\0';
+	char* label = GetWord(line,':');
+	int flag = 1;
 
 	if (IsAllowedLabelName(label))
 	{
 		if(!CreateAddSymbol(label, type, isExtern, isEntery, address))
-		{
-			printf("Error in line %d | \"%s\", the symbol %s was previously defined.\n", lineNumber, line, label);
-			return 0;
-		}
+			flag = PrintSaveError(label, "symbol was previously defined");
 	}
 	else
-	{
-		printf("Error in line %d | \"%s\", the symbol %s has an invalid name.\n", lineNumber, line, label);
-		return 0;
-	}
-	return 1;
+		flag = PrintSaveError(label, "symbol has an invalid name");
+
+	if (!flag) free(label);					// Only free if not needed
+	return flag;
 }
 
 // This function creates a symbol object and adds it to
@@ -52,10 +45,10 @@ int CreateAddSymbol(char* name, short type, short isExtern, short isEntry, short
         // Create the symbol
         Symbol* symb = (Symbol*)calloc(1, sizeof(Symbol));
         symb->name = name;
-        symb->type = type;
-        symb->isExtern = isExtern;
-        symb->isEntry = isEntry;
-        symb->address = address;
+		symb->type = type;
+		symb->isExtern = isExtern;
+		symb->isEntry = isEntry;
+		symb->address = address;
 
         // Create the node
         SymbolNode* newNode = (SymbolNode*)calloc(1, sizeof(SymbolNode));
@@ -75,11 +68,12 @@ int CreateAddSymbol(char* name, short type, short isExtern, short isEntry, short
 // This function checks that the name of a label is allowed.
 int IsAllowedLabelName(char* label)
 {
-	return (isalpha(label[0]) && !GetInstByName(label) && !GetRegisterByName(label));
+	return (isalpha(label[0]) && !GetInstByName(label) && !GetRegisterByName(label) && (strlen(label) <= 30));
 }
 
 // This function returns the Symbol* from the list of all symbols.
-// Makes sure it matches name + type (code/data). Returns NULL if not found in the list.
+// Makes sure it matches name + type (code/data), unless type is -1.
+// Returns NULL if not found in the list.
 Symbol* GetSymbol(char* name, short type)
 {
     SymbolNode* currentNode = symbList;
@@ -88,7 +82,7 @@ Symbol* GetSymbol(char* name, short type)
 
     // Until we reach the end of the list
     while (currentNode != NULL)
-        if ((strcmp(currentNode->symbol->name, name) == 0) && (currentNode->symbol->type == type))
+        if ((strcmp(currentNode->symbol->name, name) == 0) && ((type == -1) || (currentNode->symbol->type == type)))
         	return currentNode->symbol;					// Found, return it
 		else
 			currentNode = currentNode->nextNode;		// Next on the list
